@@ -1,12 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable/index";
+import type { Database } from "@/integrations/supabase/types";
+import { CATEGORIAS, SLOGAN, cat, soDigitos, tempo, tocarSlogan } from "@/lib/bora";
+
+type Perfil = Database["public"]["Tables"]["profiles"]["Row"];
+type Vaga = Database["public"]["Tables"]["vagas"]["Row"];
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Bora Trabalhar — Conectou, combinou, trabalhou!" },
-      { name: "description", content: "App comunitário que liga quem precisa de um serviço a quem quer fazer um bico." },
+      { name: "description", content: "App da quebrada que liga quem precisa de um serviço a quem quer fazer um bico." },
       { property: "og:title", content: "Bora Trabalhar" },
       { property: "og:description", content: "Conectou, combinou, trabalhou! Bicos e serviços temporários na sua comunidade." },
       { property: "og:type", content: "website" },
@@ -16,152 +24,377 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const CATEGORIAS = [
-  { id: "faxina", nome: "Faxineira", icon: "🧽" },
-  { id: "diarista", nome: "Diarista", icon: "🏠" },
-  { id: "eletricista", nome: "Eletricista", icon: "💡" },
-  { id: "frete", nome: "Fretes", icon: "🚚" },
-  { id: "trancista", nome: "Trancista", icon: "💇🏾‍♀️" },
-  { id: "manicure", nome: "Manicure", icon: "💅" },
-  { id: "cilios", nome: "Extensão de cílios", icon: "👁️" },
-  { id: "ajudante", nome: "Ajudante", icon: "🤝" },
-  { id: "auxiliar", nome: "Auxiliar diversos", icon: "🛠️" },
-];
-
-type Vaga = { id: string; cat: string; titulo: string; bairro: string; valor: string; contato: string; criada: number };
-
-const SEED: Vaga[] = [
-  { id: "1", cat: "faxina", titulo: "Faxina em apartamento 2 quartos", bairro: "Centro", valor: "R$ 150", contato: "11999990000", criada: Date.now() - 3600e3 },
-  { id: "2", cat: "frete", titulo: "Levar geladeira e sofá", bairro: "Vila Nova", valor: "R$ 120", contato: "11988880000", criada: Date.now() - 7200e3 },
-  { id: "3", cat: "trancista", titulo: "Box braids para festa sábado", bairro: "Jardim América", valor: "R$ 250", contato: "11977770000", criada: Date.now() - 9000e3 },
-];
-
-const SLOGAN = "Conectou, combinou, trabalhou!";
-
-function tocarSlogan() {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-  const u = new SpeechSynthesisUtterance(SLOGAN);
-  u.lang = "pt-BR";
-  u.rate = 1.05;
-  u.pitch = 1.2;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(u);
-}
-
-function useLocal<T>(key: string, init: T) {
-  const [v, setV] = useState<T>(init);
-  const [ok, setOk] = useState(false);
-  useEffect(() => {
-    const s = localStorage.getItem(key);
-    if (s) setV(JSON.parse(s));
-    setOk(true);
-  }, [key]);
-  useEffect(() => {
-    if (ok) localStorage.setItem(key, JSON.stringify(v));
-  }, [key, v, ok]);
-  return [v, setV] as const;
-}
-
 function Index() {
-  const [aba, setAba] = useState<"bicos" | "publicar">("bicos");
-  const [vagas, setVagas] = useLocal<Vaga[]>("bt-vagas", SEED);
-  const [interesses, setInteresses] = useLocal<string[]>("bt-interesses", []);
-  const vistos = useRef<Set<string> | null>(null);
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
 
   useEffect(() => {
-    if (!vistos.current) {
-      vistos.current = new Set(vagas.map((v) => v.id));
-      return;
-    }
-    for (const v of vagas) {
-      if (!vistos.current.has(v.id)) {
-        vistos.current.add(v.id);
-        if (interesses.includes(v.cat)) {
-          tocarSlogan();
-          toast.success("Vaga compatível pra você!", { description: `${v.titulo} · ${v.bairro} · ${v.valor}` });
-        }
-      }
-    }
-  }, [vagas, interesses]);
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    return () => data.subscription.unsubscribe();
+  }, []);
 
-  const filtradas = interesses.length ? vagas.filter((v) => interesses.includes(v.cat)) : vagas;
-  const cat = (id: string) => CATEGORIAS.find((c) => c.id === id)!;
+  const carregarPerfil = useCallback(async () => {
+    if (!session) return setPerfil(null);
+    const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+    setPerfil(data);
+  }, [session]);
+
+  useEffect(() => {
+    carregarPerfil();
+  }, [carregarPerfil]);
+
+  if (session === undefined || (session && !perfil)) return <Splash />;
+  if (!session) return <Entrada />;
+  if (!perfil!.completo) return <Cadastro perfil={perfil!} onSalvo={carregarPerfil} />;
+  return <App perfil={perfil!} onPerfil={carregarPerfil} />;
+}
+
+function Splash() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <Logo />
+    </div>
+  );
+}
+
+function Logo({ big = false }: { big?: boolean }) {
+  return (
+    <h1 className={`font-extrabold leading-none tracking-tighter ${big ? "text-6xl" : "text-3xl"}`}>
+      bora<span className="text-primary">.</span>
+      <br className={big ? "" : "hidden"} />
+      <span className={big ? "" : "ml-1"}>trabalhar</span>
+      <span className="text-accent">!</span>
+    </h1>
+  );
+}
+
+/* ---------------- Entrada / Login ---------------- */
+
+function Entrada() {
+  const [modo, setModo] = useState<"entrar" | "criar">("criar");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [load, setLoad] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault();
+    setLoad(true);
+    const r =
+      modo === "criar"
+        ? await supabase.auth.signUp({ email, password: senha, options: { emailRedirectTo: window.location.origin } })
+        : await supabase.auth.signInWithPassword({ email, password: senha });
+    setLoad(false);
+    if (r.error) return void toast.error(traduzErro(r.error.message));
+    if (modo === "criar" && !r.data.session) setEnviado(true);
+  }
+
+  async function google() {
+    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+    if (r.error) toast.error("Não rolou entrar com Google. Tenta de novo.");
+  }
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
-      <header className="rounded-b-[2rem] bg-secondary px-6 pb-8 pt-10 text-secondary-foreground">
-        <h1 className="text-4xl font-extrabold tracking-tight">
-          Bora <span className="text-accent">Trabalhar</span>
-        </h1>
-        <p className="mt-2 font-semibold text-primary">{SLOGAN}</p>
-        <p className="mt-3 text-sm opacity-80">Bicos e serviços na sua comunidade. Quem precisa encontra quem faz.</p>
-        <button onClick={tocarSlogan} className="mt-4 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground">
-          🔊 Ouvir o aviso de vaga
+    <div className="mx-auto flex min-h-screen max-w-md flex-col px-6 py-10">
+      <div className="flex-1">
+        <span className="inline-block animate-wiggle rounded-full bg-accent px-3 py-1 text-xs font-bold uppercase tracking-wide text-accent-foreground">
+          bico na quebrada 🔥
+        </span>
+        <div className="mt-6">
+          <Logo big />
+        </div>
+        <p className="mt-5 text-2xl font-bold text-primary">{SLOGAN}</p>
+        <p className="mt-3 text-muted-foreground">
+          Quem precisa de um serviço encontra quem faz. Quem quer fazer um bico recebe aviso na hora.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          {CATEGORIAS.map((c) => (
+            <span key={c.id} className="rounded-full border border-border px-3 py-1 text-sm">
+              {c.icon} {c.nome}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-10 rounded-3xl border border-border bg-card p-5">
+        {enviado ? (
+          <div className="text-center">
+            <p className="text-4xl">📬</p>
+            <p className="mt-2 font-bold">Confere teu e-mail!</p>
+            <p className="text-sm text-muted-foreground">Mandamos um link pra confirmar a conta.</p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-secondary p-1">
+              {(["criar", "entrar"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setModo(m)}
+                  className={`rounded-xl py-2 text-sm font-bold ${modo === m ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                >
+                  {m === "criar" ? "Criar conta" : "Já tenho conta"}
+                </button>
+              ))}
+            </div>
+            <form onSubmit={enviar} className="space-y-3">
+              <input className="field" type="email" required placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input className="field" type="password" required minLength={6} placeholder="Senha (mín. 6)" value={senha} onChange={(e) => setSenha(e.target.value)} />
+              <button disabled={load} className="w-full rounded-2xl bg-hype py-3.5 text-lg font-extrabold text-primary-foreground disabled:opacity-60">
+                {load ? "..." : modo === "criar" ? "Bora! 🚀" : "Entrar"}
+              </button>
+            </form>
+            <button onClick={google} className="mt-3 w-full rounded-2xl border border-border py-3 font-semibold">
+              Continuar com Google
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function traduzErro(m: string) {
+  if (/invalid login/i.test(m)) return "E-mail ou senha errados.";
+  if (/already registered/i.test(m)) return "Esse e-mail já tem conta. Entra por 'Já tenho conta'.";
+  if (/not confirmed/i.test(m)) return "Confirma teu e-mail antes de entrar.";
+  return m;
+}
+
+/* ---------------- Cadastro (perfil) ---------------- */
+
+function Cadastro({ perfil, onSalvo, onCancel }: { perfil: Perfil; onSalvo: () => void; onCancel?: () => void }) {
+  const [f, setF] = useState({
+    nome: perfil.nome,
+    whatsapp: perfil.whatsapp,
+    bairro: perfil.bairro,
+    tipo: perfil.tipo,
+    habilidades: perfil.habilidades,
+  });
+  const [load, setLoad] = useState(false);
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    if (f.nome.trim().length < 2) return void toast.error("Coloca teu nome");
+    if (soDigitos(f.whatsapp).length < 10) return void toast.error("WhatsApp com DDD, tipo 11 99999-9999");
+    if (f.bairro.trim().length < 2) return void toast.error("Qual teu bairro?");
+    if (f.tipo === "trabalhador" && f.habilidades.length === 0) return void toast.error("Escolhe pelo menos um serviço que você faz");
+    setLoad(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ ...f, nome: f.nome.trim(), bairro: f.bairro.trim(), completo: true })
+      .eq("id", perfil.id);
+    setLoad(false);
+    if (error) return void toast.error("Erro ao salvar, tenta de novo");
+    toast.success("Perfil salvo! 🙌");
+    onSalvo();
+  }
+
+  return (
+    <form onSubmit={salvar} className="mx-auto max-w-md space-y-5 px-6 py-8 pb-28">
+      <div>
+        <p className="text-sm font-bold uppercase tracking-wide text-accent">{onCancel ? "Editar perfil" : "Último passo"}</p>
+        <h2 className="mt-1 text-3xl font-extrabold">Bora te conhecer 👋</h2>
+      </div>
+
+      <div>
+        <p className="mb-2 font-bold">Você quer...</p>
+        <div className="grid grid-cols-2 gap-3">
+          {([
+            ["trabalhador", "💪", "Fazer bicos"],
+            ["contratante", "📣", "Contratar alguém"],
+          ] as const).map(([v, ic, t]) => (
+            <button
+              type="button"
+              key={v}
+              onClick={() => setF({ ...f, tipo: v })}
+              className={`rounded-3xl border-2 p-4 text-left transition ${f.tipo === v ? "border-primary bg-primary/10" : "border-border bg-card"}`}
+            >
+              <span className="text-3xl">{ic}</span>
+              <p className="mt-2 font-extrabold">{t}</p>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Relaxa: dá pra fazer os dois depois.</p>
+      </div>
+
+      <input className="field" placeholder="Seu nome" maxLength={60} value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} />
+      <input className="field" placeholder="WhatsApp com DDD" inputMode="tel" maxLength={20} value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: e.target.value })} />
+      <input className="field" placeholder="Bairro / comunidade" maxLength={60} value={f.bairro} onChange={(e) => setF({ ...f, bairro: e.target.value })} />
+
+      <div>
+        <p className="mb-2 font-bold">{f.tipo === "trabalhador" ? "O que você manda bem?" : "Também faz algum bico? (opcional)"}</p>
+        <Chips valor={f.habilidades} onChange={(h) => setF({ ...f, habilidades: h })} />
+        <p className="mt-2 text-xs text-muted-foreground">Quando surgir vaga disso, teu celular grita: "{SLOGAN}"</p>
+      </div>
+
+      <div className="flex gap-3">
+        {onCancel && (
+          <button type="button" onClick={onCancel} className="flex-1 rounded-2xl border border-border py-3.5 font-bold">
+            Voltar
+          </button>
+        )}
+        <button disabled={load} className="flex-[2] rounded-2xl bg-hype py-3.5 text-lg font-extrabold text-primary-foreground disabled:opacity-60">
+          {load ? "Salvando..." : "Salvar e bora!"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function Chips({ valor, onChange }: { valor: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {CATEGORIAS.map((c) => {
+        const on = valor.includes(c.id);
+        return (
+          <button
+            type="button"
+            key={c.id}
+            onClick={() => onChange(on ? valor.filter((i) => i !== c.id) : [...valor, c.id])}
+            className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card"}`}
+          >
+            {c.icon} {c.nome}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------------- App logado ---------------- */
+
+type Aba = "bicos" | "publicar" | "minhas" | "perfil";
+
+function App({ perfil, onPerfil }: { perfil: Perfil; onPerfil: () => void }) {
+  const [aba, setAba] = useState<Aba>(perfil.tipo === "contratante" ? "publicar" : "bicos");
+  const [vagas, setVagas] = useState<Vaga[]>([]);
+  const [editando, setEditando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    const { data } = await supabase.from("vagas").select("*").eq("aberta", true).order("created_at", { ascending: false }).limit(200);
+    setVagas(data ?? []);
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  useEffect(() => {
+    const ch = supabase
+      .channel("vagas-novas")
+      .on("postgres_changes", { event: "*", schema: "public", table: "vagas" }, (p) => {
+        if (p.eventType === "INSERT") {
+          const v = p.new as Vaga;
+          setVagas((old) => (old.some((o) => o.id === v.id) ? old : [v, ...old]));
+          if (v.user_id !== perfil.id && perfil.habilidades.includes(v.categoria)) {
+            tocarSlogan();
+            toast.success(`${cat(v.categoria).icon} Vaga pra você!`, { description: `${v.titulo} · ${v.bairro} · ${v.valor}` });
+          }
+        } else carregar();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [perfil.id, perfil.habilidades, carregar]);
+
+  if (editando)
+    return (
+      <Cadastro
+        perfil={perfil}
+        onCancel={() => setEditando(false)}
+        onSalvo={() => {
+          setEditando(false);
+          onPerfil();
+        }}
+      />
+    );
+
+  const pra_mim = vagas.filter((v) => v.user_id !== perfil.id && perfil.habilidades.includes(v.categoria));
+  const outras = vagas.filter((v) => v.user_id !== perfil.id && !perfil.habilidades.includes(v.categoria));
+  const minhas = vagas.filter((v) => v.user_id === perfil.id);
+
+  return (
+    <div className="mx-auto min-h-screen max-w-md pb-28">
+      <header className="flex items-center justify-between px-5 pb-3 pt-6">
+        <Logo />
+        <button onClick={tocarSlogan} aria-label="Ouvir o aviso" className="rounded-full bg-secondary px-3 py-2 text-sm font-bold">
+          🔊
         </button>
       </header>
 
-      {aba === "bicos" ? (
-        <main className="px-5 pt-6">
-          <h2 className="text-lg font-bold">O que você sabe fazer?</h2>
-          <p className="text-sm text-muted-foreground">Escolha e te avisamos quando surgir vaga compatível.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {CATEGORIAS.map((c) => {
-              const on = interesses.includes(c.id);
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => setInteresses(on ? interesses.filter((i) => i !== c.id) : [...interesses, c.id])}
-                  className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card"}`}
-                >
-                  {c.icon} {c.nome}
-                </button>
-              );
-            })}
+      {aba === "bicos" && (
+        <main className="px-5">
+          <div className="rounded-3xl bg-hype p-5 text-primary-foreground">
+            <p className="text-sm font-bold opacity-80">E aí, {perfil.nome.split(" ")[0]}!</p>
+            <p className="text-2xl font-extrabold leading-tight">
+              {pra_mim.length} {pra_mim.length === 1 ? "vaga combina" : "vagas combinam"} com você
+            </p>
+            <p className="mt-1 text-sm font-semibold">Deixa o app aberto que a gente avisa na hora 🔔</p>
           </div>
-
-          <h2 className="mt-8 text-lg font-bold">Vagas {interesses.length ? "pra você" : "abertas"} ({filtradas.length})</h2>
-          <div className="mt-3 space-y-3">
-            {filtradas.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma vaga ainda. Fica de olho, já já aparece!</p>}
-            {[...filtradas].sort((a, b) => b.criada - a.criada).map((v) => (
-              <article key={v.id} className="animate-pop rounded-2xl border border-border bg-card p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <span className="text-xs font-semibold uppercase text-muted-foreground">{cat(v.cat).icon} {cat(v.cat).nome}</span>
-                    <h3 className="mt-1 font-bold">{v.titulo}</h3>
-                    <p className="text-sm text-muted-foreground">📍 {v.bairro}</p>
-                  </div>
-                  <span className="whitespace-nowrap rounded-full bg-accent px-3 py-1 text-sm font-bold text-accent-foreground">{v.valor}</span>
-                </div>
-                <a
-                  href={`https://wa.me/55${v.contato.replace(/\D/g, "")}?text=${encodeURIComponent(`Oi! Vi sua vaga "${v.titulo}" no Bora Trabalhar.`)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 block rounded-xl bg-primary py-2.5 text-center font-semibold text-primary-foreground"
-                >
-                  Combinar no WhatsApp
-                </a>
-              </article>
-            ))}
-          </div>
+          {perfil.habilidades.length === 0 && (
+            <button onClick={() => setEditando(true)} className="mt-4 w-full rounded-2xl border border-dashed border-primary p-4 text-left text-sm">
+              Você ainda não escolheu o que faz. <b className="text-primary">Escolher agora →</b>
+            </button>
+          )}
+          <Lista titulo="Pra você 🎯" vagas={pra_mim} vazio="Nenhuma vaga do seu corre ainda. Fica ligado!" />
+          {outras.length > 0 && <Lista titulo="Outros bicos" vagas={outras} />}
         </main>
-      ) : (
+      )}
+
+      {aba === "publicar" && (
         <Publicar
-          onPublicar={(v) => {
-            setVagas([v, ...vagas]);
-            setAba("bicos");
-            toast("Vaga publicada! Agora é só aguardar.");
+          perfil={perfil}
+          onOk={() => {
+            carregar();
+            setAba("minhas");
           }}
         />
       )}
 
-      <nav className="fixed inset-x-0 bottom-0 mx-auto flex max-w-md gap-2 border-t border-border bg-card p-3">
-        {(["bicos", "publicar"] as const).map((a) => (
+      {aba === "minhas" && (
+        <main className="px-5">
+          <Lista titulo="Minhas vagas" vagas={minhas} vazio="Você ainda não publicou vaga." dono onMudou={carregar} />
+        </main>
+      )}
+
+      {aba === "perfil" && (
+        <main className="space-y-4 px-5">
+          <div className="rounded-3xl border border-border bg-card p-5">
+            <p className="text-2xl font-extrabold">{perfil.nome}</p>
+            <p className="text-muted-foreground">📍 {perfil.bairro} · 📱 {perfil.whatsapp}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {perfil.habilidades.map((h) => (
+                <span key={h} className="rounded-full bg-secondary px-3 py-1 text-sm">
+                  {cat(h).icon} {cat(h).nome}
+                </span>
+              ))}
+            </div>
+          </div>
+          <button onClick={() => setEditando(true)} className="w-full rounded-2xl bg-primary py-3.5 font-extrabold text-primary-foreground">
+            Editar perfil
+          </button>
+          <button onClick={() => supabase.auth.signOut()} className="w-full rounded-2xl border border-border py-3.5 font-bold text-muted-foreground">
+            Sair
+          </button>
+        </main>
+      )}
+
+      <nav className="fixed inset-x-0 bottom-3 mx-auto flex max-w-[22rem] justify-between rounded-full border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur">
+        {([
+          ["bicos", "🔎", "Bicos"],
+          ["publicar", "➕", "Publicar"],
+          ["minhas", "📋", "Minhas"],
+          ["perfil", "😎", "Perfil"],
+        ] as const).map(([a, ic, t]) => (
           <button
             key={a}
             onClick={() => setAba(a)}
-            className={`flex-1 rounded-xl py-3 font-bold ${aba === a ? "bg-secondary text-secondary-foreground" : "text-muted-foreground"}`}
+            className={`flex flex-1 flex-col items-center rounded-full py-2 text-xs font-bold ${aba === a ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
-            {a === "bicos" ? "🔎 Quero trabalhar" : "📣 Preciso de alguém"}
+            <span className="text-lg leading-none">{ic}</span>
+            {t}
           </button>
         ))}
       </nav>
@@ -169,30 +402,107 @@ function Index() {
   );
 }
 
-function Publicar({ onPublicar }: { onPublicar: (v: Vaga) => void }) {
-  const [f, setF] = useState({ cat: "faxina", titulo: "", bairro: "", valor: "", contato: "" });
-  const campo = "w-full rounded-xl border border-border bg-card px-4 py-3";
+function Lista({ titulo, vagas, vazio, dono, onMudou }: { titulo: string; vagas: Vaga[]; vazio?: string; dono?: boolean; onMudou?: () => void }) {
   return (
-    <form
-      className="space-y-3 px-5 pt-6"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!f.titulo || !f.bairro || !f.contato) {
-          toast.error("Preencha título, bairro e WhatsApp");
-          return;
-        }
-        onPublicar({ ...f, valor: f.valor || "A combinar", id: crypto.randomUUID(), criada: Date.now() });
-      }}
-    >
-      <h2 className="text-lg font-bold">Publicar uma vaga</h2>
-      <select className={campo} value={f.cat} onChange={(e) => setF({ ...f, cat: e.target.value })}>
-        {CATEGORIAS.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.nome}</option>)}
-      </select>
-      <input className={campo} placeholder="O que precisa? Ex: faxina pós-obra" value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} />
-      <input className={campo} placeholder="Bairro" value={f.bairro} onChange={(e) => setF({ ...f, bairro: e.target.value })} />
-      <input className={campo} placeholder="Valor (ex: R$ 100)" value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} />
-      <input className={campo} placeholder="WhatsApp com DDD" inputMode="tel" value={f.contato} onChange={(e) => setF({ ...f, contato: e.target.value })} />
-      <button className="w-full rounded-xl bg-primary py-3.5 text-lg font-bold text-primary-foreground">Publicar vaga</button>
+    <section className="mt-6">
+      <h2 className="mb-3 text-lg font-extrabold">{titulo}</h2>
+      {vagas.length === 0 && vazio && <p className="rounded-2xl bg-card p-4 text-sm text-muted-foreground">{vazio}</p>}
+      <div className="space-y-3">
+        {vagas.map((v) => (
+          <CardVaga key={v.id} v={v} dono={dono} onMudou={onMudou} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CardVaga({ v, dono, onMudou }: { v: Vaga; dono?: boolean | undefined; onMudou?: (() => void) | undefined }) {
+  const c = cat(v.categoria);
+  const zap = `https://wa.me/55${soDigitos(v.whatsapp)}?text=${encodeURIComponent(`Oi! Vi tua vaga "${v.titulo}" no Bora Trabalhar. Bora combinar?`)}`;
+  async function fechar() {
+    const { error } = await supabase.from("vagas").update({ aberta: false }).eq("id", v.id);
+    if (error) return void toast.error("Não deu pra encerrar");
+    toast("Vaga encerrada ✅");
+    onMudou?.();
+  }
+  return (
+    <article className="animate-pop rounded-3xl border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-bold">
+          {c.icon} {c.nome}
+        </span>
+        <span className="text-xs text-muted-foreground">{tempo(v.created_at)}</span>
+      </div>
+      <h3 className="mt-2 text-lg font-extrabold leading-snug">{v.titulo}</h3>
+      {v.descricao && <p className="mt-1 text-sm text-muted-foreground">{v.descricao}</p>}
+      <div className="mt-3 flex items-center justify-between">
+        <span className="text-sm">📍 {v.bairro}</span>
+        <span className="rounded-full bg-accent px-3 py-1 text-sm font-extrabold text-accent-foreground">{v.valor}</span>
+      </div>
+      {dono ? (
+        <button onClick={fechar} className="mt-3 w-full rounded-2xl border border-border py-2.5 font-bold">
+          Já combinei — encerrar vaga
+        </button>
+      ) : (
+        <a href={zap} target="_blank" rel="noreferrer" className="mt-3 block rounded-2xl bg-primary py-2.5 text-center font-extrabold text-primary-foreground">
+          Chamar no Zap 💬
+        </a>
+      )}
+    </article>
+  );
+}
+
+function Publicar({ perfil, onOk }: { perfil: Perfil; onOk: () => void }) {
+  const [f, setF] = useState({ categoria: "faxina", titulo: "", descricao: "", bairro: perfil.bairro, valor: "", whatsapp: perfil.whatsapp });
+  const [load, setLoad] = useState(false);
+
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault();
+    if (f.titulo.trim().length < 3) return void toast.error("Conta o que você precisa");
+    if (f.bairro.trim().length < 2) return void toast.error("Qual o bairro?");
+    if (soDigitos(f.whatsapp).length < 10) return void toast.error("WhatsApp com DDD");
+    setLoad(true);
+    const { error } = await supabase.from("vagas").insert({
+      ...f,
+      titulo: f.titulo.trim(),
+      descricao: f.descricao.trim(),
+      bairro: f.bairro.trim(),
+      valor: f.valor.trim() || "A combinar",
+      user_id: perfil.id,
+    });
+    setLoad(false);
+    if (error) return void toast.error("Erro ao publicar, tenta de novo");
+    toast.success("Vaga no ar! 🚀 A galera já foi avisada.");
+    onOk();
+  }
+
+  return (
+    <form onSubmit={enviar} className="space-y-3 px-5">
+      <h2 className="text-3xl font-extrabold">Precisa de alguém? 📣</h2>
+      <p className="text-sm text-muted-foreground">Quem faz esse serviço recebe o aviso na hora.</p>
+      <div className="grid grid-cols-3 gap-2 pt-2">
+        {CATEGORIAS.map((c) => (
+          <button
+            type="button"
+            key={c.id}
+            onClick={() => setF({ ...f, categoria: c.id })}
+            className={`rounded-2xl border p-3 text-center text-xs font-bold ${f.categoria === c.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card"}`}
+          >
+            <span className="block text-2xl">{c.icon}</span>
+            {c.nome}
+          </button>
+        ))}
+      </div>
+      <input className="field" maxLength={120} placeholder="Ex: faxina pós-obra no sábado" value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} />
+      <textarea className="field min-h-24" maxLength={600} placeholder="Detalhes (opcional)" value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} />
+      <div className="grid grid-cols-2 gap-3">
+        <input className="field" maxLength={80} placeholder="Bairro" value={f.bairro} onChange={(e) => setF({ ...f, bairro: e.target.value })} />
+        <input className="field" maxLength={30} placeholder="Valor (R$)" value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} />
+      </div>
+      <input className="field" inputMode="tel" maxLength={20} placeholder="WhatsApp pra contato" value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: e.target.value })} />
+      <button disabled={load} className="w-full rounded-2xl bg-hype py-4 text-lg font-extrabold text-primary-foreground disabled:opacity-60">
+        {load ? "Publicando..." : "Publicar vaga 🚀"}
+      </button>
     </form>
   );
 }
