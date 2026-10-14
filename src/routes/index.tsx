@@ -177,7 +177,10 @@ function Publicar({ onPublicar }: { onPublicar: (v: Vaga) => void }) {
       className="space-y-3 px-5 pt-6"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!f.titulo || !f.bairro || !f.contato) return toast.error("Preencha título, bairro e WhatsApp");
+        if (!f.titulo || !f.bairro || !f.contato) {
+          toast.error("Preencha título, bairro e WhatsApp");
+          return;
+        }
         onPublicar({ ...f, valor: f.valor || "A combinar", id: crypto.randomUUID(), criada: Date.now() });
       }}
     >
