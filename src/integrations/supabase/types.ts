@@ -14,7 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          bairro: string
+          completo: boolean
+          created_at: string
+          habilidades: string[]
+          id: string
+          nome: string
+          tipo: string
+          whatsapp: string
+        }
+        Insert: {
+          bairro?: string
+          completo?: boolean
+          created_at?: string
+          habilidades?: string[]
+          id: string
+          nome?: string
+          tipo?: string
+          whatsapp?: string
+        }
+        Update: {
+          bairro?: string
+          completo?: boolean
+          created_at?: string
+          habilidades?: string[]
+          id?: string
+          nome?: string
+          tipo?: string
+          whatsapp?: string
+        }
+        Relationships: []
+      }
+      vagas: {
+        Row: {
+          aberta: boolean
+          bairro: string
+          categoria: string
+          created_at: string
+          descricao: string
+          id: string
+          titulo: string
+          user_id: string
+          valor: string
+          whatsapp: string
+        }
+        Insert: {
+          aberta?: boolean
+          bairro: string
+          categoria: string
+          created_at?: string
+          descricao?: string
+          id?: string
+          titulo: string
+          user_id: string
+          valor?: string
+          whatsapp: string
+        }
+        Update: {
+          aberta?: boolean
+          bairro?: string
+          categoria?: string
+          created_at?: string
+          descricao?: string
+          id?: string
+          titulo?: string
+          user_id?: string
+          valor?: string
+          whatsapp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vagas_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
