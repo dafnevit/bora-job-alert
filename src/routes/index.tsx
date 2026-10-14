@@ -416,7 +416,7 @@ function Lista({ titulo, vagas, vazio, dono, onMudou }: { titulo: string; vagas:
   );
 }
 
-function CardVaga({ v, dono, onMudou }: { v: Vaga; dono?: boolean; onMudou?: () => void }) {
+function CardVaga({ v, dono, onMudou }: { v: Vaga; dono?: boolean | undefined; onMudou?: (() => void) | undefined }) {
   const c = cat(v.categoria);
   const zap = `https://wa.me/55${soDigitos(v.whatsapp)}?text=${encodeURIComponent(`Oi! Vi tua vaga "${v.titulo}" no Bora Trabalhar. Bora combinar?`)}`;
   async function fechar() {
