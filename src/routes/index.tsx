@@ -520,3 +520,113 @@ function Publicar({ perfil, onOk }: { perfil: Perfil; onOk: () => void }) {
     </form>
   );
 }
+
+/* ---------------- Painel da Criadora ---------------- */
+
+function Admin({ perfil }: { perfil: Perfil }) {
+  const [perfis, setPerfis] = useState<Perfil[]>([]);
+  const [todasVagas, setTodasVagas] = useState<Vaga[]>([]);
+
+  const carregar = useCallback(async () => {
+    const [p, v] = await Promise.all([
+      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+      supabase.from("vagas").select("*").order("created_at", { ascending: false }),
+    ]);
+    setPerfis(p.data ?? []);
+    setTodasVagas(v.data ?? []);
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  async function removerVaga(id: string) {
+    const { error } = await supabase.from("vagas").delete().eq("id", id);
+    if (error) return void toast.error("Não deu pra remover");
+    toast.success("Vaga removida ✅");
+    carregar();
+  }
+
+  const ativas = todasVagas.filter((v) => v.aberta);
+  const trabalhadores = perfis.filter((p) => p.tipo === "trabalhador").length;
+  const contratantes = perfis.filter((p) => p.tipo === "contratante").length;
+  const bairros = new Set(perfis.map((p) => p.bairro.trim().toLowerCase()).filter(Boolean)).size;
+
+  return (
+    <main className="space-y-6 px-5">
+      <div>
+        <p className="text-sm font-bold uppercase tracking-wide text-accent">Área exclusiva</p>
+        <h2 className="mt-1 text-3xl font-extrabold">Painel da Criadora 👑</h2>
+        <p className="text-sm text-muted-foreground">Oi, {perfil.nome.split(" ")[0]}! Aqui você acompanha e cuida da comunidade.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          [perfis.length, "pessoas cadastradas", "💜"],
+          [trabalhadores, "fazem bicos", "💪"],
+          [contratantes, "querem contratar", "📣"],
+          [ativas.length, "vagas ativas", "🔥"],
+          [todasVagas.length, "vagas no total", "📋"],
+          [bairros, "bairros alcançados", "📍"],
+        ].map(([n, t, ic]) => (
+          <div key={String(t)} className="rounded-3xl border border-border bg-card p-4">
+            <span className="text-xl">{ic}</span>
+            <p className="mt-1 text-2xl font-extrabold text-primary">{n}</p>
+            <p className="text-xs text-muted-foreground">{t}</p>
+          </div>
+        ))}
+      </div>
+
+      <section>
+        <h3 className="mb-3 text-lg font-extrabold">Vagas publicadas 🛡️</h3>
+        {todasVagas.length === 0 && <p className="rounded-2xl bg-card p-4 text-sm text-muted-foreground">Nenhuma vaga publicada ainda.</p>}
+        <div className="space-y-3">
+          {todasVagas.map((v) => (
+            <article key={v.id} className="rounded-3xl border border-border bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-bold">
+                  {cat(v.categoria).icon} {cat(v.categoria).nome}
+                </span>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${v.aberta ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
+                  {v.aberta ? "ativa" : "encerrada"}
+                </span>
+              </div>
+              <h4 className="mt-2 font-extrabold leading-snug">{v.titulo}</h4>
+              <p className="mt-1 text-sm text-muted-foreground">
+                📍 {v.bairro} · {v.valor} · {tempo(v.created_at)}
+              </p>
+              <button onClick={() => removerVaga(v.id)} className="mt-3 w-full rounded-2xl border border-accent py-2.5 font-bold text-accent">
+                Remover vaga 🗑️
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="mb-3 text-lg font-extrabold">Quem tá no app 💜</h3>
+        <div className="space-y-3">
+          {perfis.map((p) => (
+            <div key={p.id} className="rounded-3xl border border-border bg-card p-4">
+              <p className="font-extrabold">
+                {p.nome || "Sem nome"} {p.id === perfil.id && "👑"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {p.tipo === "trabalhador" ? "💪 Faz bicos" : "📣 Contrata"} · 📍 {p.bairro || "—"} · 📱 {p.whatsapp || "—"}
+              </p>
+              {p.habilidades.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {p.habilidades.map((h) => (
+                    <span key={h} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs">
+                      {cat(h).icon} {cat(h).nome}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+    </main>
+  );
+}
