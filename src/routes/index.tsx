@@ -392,12 +392,15 @@ function App({ perfil, onPerfil }: { perfil: Perfil; onPerfil: () => void }) {
         </main>
       )}
 
+      {aba === "admin" && admin && <Admin perfil={perfil} />}
+
       <nav className="fixed inset-x-0 bottom-3 mx-auto flex max-w-[22rem] justify-between rounded-full border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur">
         {([
           ["bicos", "🔎", "Bicos"],
           ["publicar", "➕", "Publicar"],
           ["minhas", "📋", "Minhas"],
           ["perfil", "😎", "Perfil"],
+          ...(admin ? ([["admin", "👑", "Criadora"]] as const) : []),
         ] as const).map(([a, ic, t]) => (
           <button
             key={a}
