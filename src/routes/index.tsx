@@ -264,12 +264,23 @@ function Chips({ valor, onChange }: { valor: string[]; onChange: (v: string[]) =
 
 /* ---------------- App logado ---------------- */
 
-type Aba = "bicos" | "publicar" | "minhas" | "perfil";
+type Aba = "bicos" | "publicar" | "minhas" | "perfil" | "admin";
 
 function App({ perfil, onPerfil }: { perfil: Perfil; onPerfil: () => void }) {
   const [aba, setAba] = useState<Aba>(perfil.tipo === "contratante" ? "publicar" : "bicos");
   const [vagas, setVagas] = useState<Vaga[]>([]);
   const [editando, setEditando] = useState(false);
+  const [admin, setAdmin] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", perfil.id)
+      .eq("role", "admin")
+      .maybeSingle()
+      .then(({ data }) => setAdmin(!!data));
+  }, [perfil.id]);
 
   const carregar = useCallback(async () => {
     const { data } = await supabase.from("vagas").select("*").eq("aberta", true).order("created_at", { ascending: false }).limit(200);
