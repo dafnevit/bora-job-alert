@@ -540,12 +540,6 @@ function Admin({ perfil }: { perfil: Perfil }) {
     carregar();
   }, [carregar]);
 
-  async function removerVaga(id: string) {
-    const { error } = await supabase.from("vagas").delete().eq("id", id);
-    if (error) return void toast.error("Não deu pra remover");
-    toast.success("Vaga removida ✅");
-    carregar();
-  }
 
   const ativas = todasVagas.filter((v) => v.aberta);
   const trabalhadores = perfis.filter((p) => p.tipo === "trabalhador").length;
@@ -582,23 +576,7 @@ function Admin({ perfil }: { perfil: Perfil }) {
         {todasVagas.length === 0 && <p className="rounded-2xl bg-card p-4 text-sm text-muted-foreground">Nenhuma vaga publicada ainda.</p>}
         <div className="space-y-3">
           {todasVagas.map((v) => (
-            <article key={v.id} className="rounded-3xl border border-border bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-bold">
-                  {cat(v.categoria).icon} {cat(v.categoria).nome}
-                </span>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${v.aberta ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
-                  {v.aberta ? "ativa" : "encerrada"}
-                </span>
-              </div>
-              <h4 className="mt-2 font-extrabold leading-snug">{v.titulo}</h4>
-              <p className="mt-1 text-sm text-muted-foreground">
-                📍 {v.bairro} · {v.valor} · {tempo(v.created_at)}
-              </p>
-              <button onClick={() => removerVaga(v.id)} className="mt-3 w-full rounded-2xl border border-accent py-2.5 font-bold text-accent">
-                Remover vaga 🗑️
-              </button>
-            </article>
+            <AdminVaga key={v.id} v={v} onMudou={carregar} />
           ))}
         </div>
       </section>
@@ -628,5 +606,96 @@ function Admin({ perfil }: { perfil: Perfil }) {
         </div>
       </section>
     </main>
+  );
+}
+
+/* ---------------- Cartão de vaga no painel da criadora ---------------- */
+
+function AdminVaga({ v, onMudou }: { v: Vaga; onMudou: () => void }) {
+  const [editando, setEditando] = useState(false);
+  const [f, setF] = useState({ titulo: v.titulo, descricao: v.descricao ?? "", bairro: v.bairro, valor: v.valor });
+  const [load, setLoad] = useState(false);
+
+  async function salvar() {
+    if (f.titulo.trim().length < 3) return void toast.error("Título muito curto");
+    if (f.bairro.trim().length < 2) return void toast.error("Qual o bairro?");
+    setLoad(true);
+    const { error } = await supabase
+      .from("vagas")
+      .update({
+        titulo: f.titulo.trim(),
+        descricao: f.descricao.trim(),
+        bairro: f.bairro.trim(),
+        valor: f.valor.trim() || "A combinar",
+      })
+      .eq("id", v.id);
+    setLoad(false);
+    if (error) return void toast.error("Não deu pra salvar");
+    toast.success("Vaga atualizada ✏️");
+    setEditando(false);
+    onMudou();
+  }
+
+  async function virar() {
+    const { error } = await supabase.from("vagas").update({ aberta: !v.aberta }).eq("id", v.id);
+    if (error) return void toast.error("Não deu pra mudar");
+    toast(v.aberta ? "Vaga encerrada ✅" : "Vaga reaberta 🔥");
+    onMudou();
+  }
+
+  async function remover() {
+    const { error } = await supabase.from("vagas").delete().eq("id", v.id);
+    if (error) return void toast.error("Não deu pra remover");
+    toast.success("Vaga removida ✅");
+    onMudou();
+  }
+
+  return (
+    <article className="rounded-3xl border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-bold">
+          {cat(v.categoria).icon} {cat(v.categoria).nome}
+        </span>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${v.aberta ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
+          {v.aberta ? "ativa" : "encerrada"}
+        </span>
+      </div>
+
+      {editando ? (
+        <div className="mt-3 space-y-2">
+          <input className="field" maxLength={120} placeholder="Título" value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} />
+          <textarea className="field min-h-20" maxLength={600} placeholder="Detalhes" value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} />
+          <div className="grid grid-cols-2 gap-2">
+            <input className="field" maxLength={80} placeholder="Bairro" value={f.bairro} onChange={(e) => setF({ ...f, bairro: e.target.value })} />
+            <input className="field" maxLength={30} placeholder="Valor" value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} />
+          </div>
+          <button onClick={salvar} disabled={load} className="w-full rounded-2xl bg-primary py-2.5 font-extrabold text-primary-foreground disabled:opacity-60">
+            {load ? "Salvando..." : "Salvar mudanças ✅"}
+          </button>
+          <button onClick={() => setEditando(false)} className="w-full rounded-2xl border border-border py-2 font-bold">
+            Deixar como tá
+          </button>
+        </div>
+      ) : (
+        <>
+          <h4 className="mt-2 font-extrabold leading-snug">{v.titulo}</h4>
+          {v.descricao && <p className="mt-1 text-sm text-muted-foreground">{v.descricao}</p>}
+          <p className="mt-1 text-sm text-muted-foreground">
+            📍 {v.bairro} · {v.valor} · {tempo(v.created_at)}
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button onClick={() => setEditando(true)} className="rounded-2xl border border-border py-2.5 font-bold">
+              Editar ✏️
+            </button>
+            <button onClick={virar} className="rounded-2xl border border-border py-2.5 font-bold">
+              {v.aberta ? "Encerrar ⏸️" : "Reabrir 🔥"}
+            </button>
+          </div>
+          <button onClick={remover} className="mt-2 w-full rounded-2xl border border-accent py-2.5 font-bold text-accent">
+            Remover vaga 🗑️
+          </button>
+        </>
+      )}
+    </article>
   );
 }
