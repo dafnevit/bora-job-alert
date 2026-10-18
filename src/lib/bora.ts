@@ -7,7 +7,6 @@ export const CATEGORIAS = [
   { id: "frete", nome: "Fretes", icon: "🚚" },
   { id: "trancista", nome: "Trancista", icon: "💇🏾‍♀️" },
   { id: "manicure", nome: "Manicure", icon: "💅" },
-  { id: "cilios", nome: "Cílios", icon: "👁️" },
   { id: "ajudante", nome: "Ajudante", icon: "🤝" },
   { id: "auxiliar", nome: "Auxiliar geral", icon: "🛠️" },
 ] as const;
