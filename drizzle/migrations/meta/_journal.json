@@ -15,6 +15,13 @@
       "when": 1792028654073,
       "tag": "0001_admin_criadora",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792357276742,
+      "tag": "0002_regras_apertas_criadora",
+      "breakpoints": true
     }
   ]
 }
