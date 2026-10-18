@@ -4,11 +4,7 @@ export const CATEGORIAS = [
   { id: "faxina", nome: "Faxina", icon: "🧽" },
   { id: "diarista", nome: "Diarista", icon: "🏠" },
   { id: "eletricista", nome: "Eletricista", icon: "💡" },
-  { id: "frete", nome: "Fretes", icon: "🚚" },
-  { id: "trancista", nome: "Trancista", icon: "💇🏾‍♀️" },
-  { id: "manicure", nome: "Manicure", icon: "💅" },
-  { id: "ajudante", nome: "Ajudante", icon: "🤝" },
-  { id: "auxiliar", nome: "Auxiliar geral", icon: "🛠️" },
+  { id: "hidraulica", nome: "Hidráulica", icon: "🚰" },
 ] as const;
 
 export const cat = (id: string) => CATEGORIAS.find((c) => c.id === id) ?? { id, nome: id, icon: "✨" };
